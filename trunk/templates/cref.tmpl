@@ -1,0 +1,19 @@
+<GoogleCustomizations>
+  <CustomSearchEngine>
+    <Title>{{ name }}'s friends</Title>
+    <Description>
+      A Google Custom Search Engine for {{ name }}.
+    </Description>
+    <Context>
+      <BackgroundLabels>
+        <Label name="include" mode="FILTER"/>
+      </BackgroundLabels>
+    </Context>
+  </CustomSearchEngine>
+
+  <Include type="Annotations" href="http://ego-ego.appspot.com/friendfeed/{{ nickname }}/annotations/"/>
+  {% for start_index in start_indexes %}
+  <Include type="Annotations" href="http://wego-wego.appspot.com/friendfeed/{{ nickname }}/annotations/{{ start_index }}/"/>
+  {% endfor %}
+
+</GoogleCustomizations>
