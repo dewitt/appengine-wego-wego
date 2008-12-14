@@ -32,6 +32,9 @@ import django.core.handlers.wsgi
 import django.core.mail
 import django.db
 import django.dispatch.dispatcher
+import django.middleware.common
+import django.template.loaders.filesystem
+
 import simplejson
 
 import urls
@@ -67,4 +70,3 @@ if __name__ == '__main__':
   #stats.print_stats(80)  # 80 = how many to print
   #logging.info("Profile data:\n%s", stream.getvalue())
   Main()
-
