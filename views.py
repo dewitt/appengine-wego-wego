@@ -69,21 +69,30 @@ def cacheable(keygen=None, expiration=CACHE_EXPIRATION):
   """
   # Define the decorator itself as a closure within cacheable
   def call(f, *args, **kwargs):
+    # Don't use the cache at all if there is no expiration
+    if not expiration:
+      return f(*args, **kwargs)
+
+    # Use the supplied keygen to create a local cache key
+    # or use the first positional arg if none is supplied
     if keygen:
-      key = keygen(*args, **kwargs)
+      local_key = keygen(*args, **kwargs)
     else:
-      key = args[0]
-    cache_key = str((f, key))
-    logging.debug('Checking cache for %s' % key)
-    result = memcache.get(cache_key)
+      local_key = args[0]
+
+    # Create a global cache key that remains stable across instances
+    global_key = '%s:%s:%s' % (f.__module__, f.__name__, local_key)
+
+    logging.debug('Checking cache for %s' % local_key)
+    result = memcache.get(global_key)
     if result:
-      logging.debug('Found %s in cache.' % key)
+      logging.debug('Found %s in cache.' % local_key)
     else:
-      logging.debug('Cache miss for %s.' % key)
+      logging.debug('Cache miss for %s.' % local_key)
       result = f(*args, **kwargs)
-      logging.debug('Caching %s' % key)
-      if not memcache.add(cache_key, result, expiration):
-        logging.error('Error caching response for %s.' % key)
+      logging.debug('Caching %s' % local_key)
+      if not memcache.add(global_key, result, expiration):
+        logging.error('Error caching response for %s.' % local_key)
     return result
 
   return decorator(call)
