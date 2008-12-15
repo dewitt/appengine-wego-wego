@@ -129,7 +129,7 @@ def get_friendfeed_profile(nickname):
     raise UserError('nickname required')
 
   friendfeed_profile_url = (
-    'http://friendfeed.com/api/user/%s/profile?name,nickname,subscriptions' % nickname)
+    'http://friendfeed.com/api/user/%s/profile?include=name,nickname,subscriptions' % nickname)
 
   result = get_url(friendfeed_profile_url)
   if result.status_code == 404:
