@@ -34,9 +34,7 @@ import wsgidispatcher
 CREF_MIMETYPE = 'text/xml'
 ANNOTATIONS_MIMETYPE = 'text/xml'
 OSD_MIMETYPE = 'application/opensearchdescription+xml'
-
 CACHE_EXPIRATION = 3600
-
 TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), 'templates')
 
 
@@ -303,6 +301,7 @@ class Dispatcher(object):
   """
   def __init__(self):
     self._urls = wsgidispatcher.Dispatcher()
+    self._error_handler = None
 
   def get_app(self):
     """Returns a WSGIApplication instance."""
