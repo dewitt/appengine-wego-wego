@@ -1,6 +1,6 @@
 <Annotations>
   {% for annotation in annotations %}
-    {{ annotation }}
+    {% if annotation %}{{ annotation }}{% endif %}
   {% endfor %}
 </Annotations>
 
