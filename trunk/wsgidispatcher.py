@@ -208,8 +208,6 @@ __all__ = [
 import re
 import logging
 
-logger = logging.getLogger("robaccia.request")
-
 NOMATCH = -1
 template_splitter = re.compile("([\[\]\{\}])")
 
@@ -430,7 +428,6 @@ Example::
         """An instance of a Dispatcher is a callable that is
         a WSGI application. See the module level documentation
         for an example."""
-        logger.info(environ.get('PATH_INFO', '-no path given-'))
         for predicate in self.matchers:
             ret = predicate(environ, start_response)
             if ret != NOMATCH:
