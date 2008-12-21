@@ -36,7 +36,10 @@ ANNOTATIONS_MIMETYPE = 'text/xml'
 OSD_MIMETYPE = 'application/opensearchdescription+xml'
 CACHE_EXPIRATION = 3600
 TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), 'templates')
-
+MAX_FRIENDS_PER_ANNOTATION = 5
+MAX_ANNOTATIONS = 50
+MAX_FRIENDS = MAX_FRIENDS_PER_ANNOTATION * MAX_ANNOTATIONS
+ANNOTATIONS_URL_TEMPLATE = 'http://ego-ego.appspot.com/friendfeed/%s/annotations/list/'
 
 class ReportableError(Exception):
   """A class of exceptions that should be shown to the user."""
@@ -181,7 +184,7 @@ def get_friendfeed_name(friendfeed_profile, friendfeed_name):
 
 def get_friend_nicknames(friendfeed_profile):
   """Return a list of friend nicknames from the profile."""
-  friend_nicknames = []
+  friend_nicknames = [friendfeed_profile['nickname']]
   for subscription in friendfeed_profile['subscriptions']:
     try:
       friend_nickname = subscription['nickname']
@@ -261,16 +264,27 @@ def CrefView(request, nickname):
     return webob.exc.HTTPMovedPermanently(location=request.path.lower())
   friendfeed_profile = get_friendfeed_profile(nickname)
   name = get_friendfeed_name(friendfeed_profile, nickname)
-  # Google CSE annotation files can only contain 50 at a time
-  # so we shard the Include references.  Django templates 
-  # don't support math operations, so we pass it a list
-  # of start indexes that we precalculate here.
-  num_friends = len(get_friend_nicknames(friendfeed_profile))
-  start_indexes = [i * 50 for i in xrange((num_friends / 50) + 1)]
+  # Shard the annotations such that we include no more than 50 files
+  # and none of those files contain more than 5 friends.  Users that have
+  # more than 250 friends will have a truncated CSE.
+  num_friends = min(MAX_FRIENDS, len(get_friend_nicknames(friendfeed_profile)))
+  start_indexes = [i * MAX_FRIENDS_PER_ANNOTATION for i in xrange((num_friends / MAX_FRIENDS_PER_ANNOTATION))]
   template_data = {'nickname': nickname, 
                    'name':  name,
                    'start_indexes': start_indexes}
   return TemplateResponse('cref.tmpl', template_data, content_type=CREF_MIMETYPE)
+
+
+@cacheable()
+def get_annotation(friend_nickname):
+  """Retrieve the annotation file for given user."""
+  url = ANNOTATIONS_URL_TEMPLATE % friend_nickname
+  result = get_url(url)
+  if result.status_code != 200:
+    logging.debug('Could not load %s' % url)
+    annotation = ''
+  else:
+    return result.content
 
 
 @cacheable(keygen=request_keygen)
@@ -285,9 +299,10 @@ def AnnotationView(request, nickname, start_index=None):
     start_index = int(start_index)
   friendfeed_profile = get_friendfeed_profile(nickname)
   all_friend_nicknames = get_friend_nicknames(friendfeed_profile)
-  end_index = min(len(all_friend_nicknames), start_index + 50)
+  end_index = min(len(all_friend_nicknames), start_index + MAX_FRIENDS_PER_ANNOTATION)
   friend_nicknames = all_friend_nicknames[start_index:end_index]
-  template_data = {'friend_nicknames': friend_nicknames}
+  annotations = [get_annotation(friend_nickname) for friend_nickname in friend_nicknames]
+  template_data = {'annotations': annotations}
   return TemplateResponse(
     'annotations.tmpl', template_data, content_type=ANNOTATIONS_MIMETYPE)
 
@@ -372,7 +387,8 @@ class Dispatcher(object):
 def Main():
   logging.debug('Beginning Main()')
   dispatcher = Dispatcher()
-  dispatcher.add_error_handler(ExceptionView)
+  if not os.environ['SERVER_SOFTWARE'].startswith('Dev'):
+    dispatcher.add_error_handler(ExceptionView)
   dispatcher.add_get_handler('/', HomeView)
   dispatcher.add_get_handler('/faq/', FaqView)
   dispatcher.add_post_handler('/user/', UserRedirectView)
