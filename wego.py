@@ -268,7 +268,7 @@ def CrefView(request, nickname):
   # and none of those files contain more than 5 friends.  Users that have
   # more than 250 friends will have a truncated CSE.
   num_friends = min(MAX_FRIENDS, len(get_friend_nicknames(friendfeed_profile)))
-  start_indexes = [i * MAX_FRIENDS_PER_ANNOTATION for i in xrange((num_friends / MAX_FRIENDS_PER_ANNOTATION))]
+  start_indexes = [i * MAX_FRIENDS_PER_ANNOTATION for i in xrange((num_friends / (MAX_FRIENDS_PER_ANNOTATION))+ 1)]
   template_data = {'nickname': nickname, 
                    'name':  name,
                    'start_indexes': start_indexes}
