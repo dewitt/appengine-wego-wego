@@ -66,10 +66,10 @@
    <script type="text/javascript"> 
      $(document).ready(function() {
        // Hack to reload the CSE so that it is fast when the user clicks on the link
-       //       var preload = document.createElement('img');
-       //       preload.src = "http://www.google.com/cse?cref=http://wego-wego.appspot.com/friendfeed/{{ nickname }}/cref/";
+       var preload = document.createElement('img');
+       preload.src = "http://www.google.com/cse?cref=http://wego-wego.appspot.com/friendfeed/{{ nickname }}/cref/";
        // Send focus to the search box
-       // $(":input:visible:enabled:first").focus();
+       $(":input:visible:enabled:first").focus();
      });
    </script>
 
