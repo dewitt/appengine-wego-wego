@@ -23,7 +23,8 @@ handlers:
   static_dir: static/js
 
 - url: /.*
-  script: main.py
+  script: wego.py
+
 
 
 

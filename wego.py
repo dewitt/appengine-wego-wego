@@ -13,23 +13,28 @@
 # limitations under the License.
 
 import logging
-
-import simplejson
+import os
 
 from google.appengine.api import memcache
 from google.appengine.api import urlfetch
+from google.appengine.ext import webapp
+from google.appengine.ext.webapp import template, Request, Response
+from google.appengine.ext.webapp.util import run_wsgi_app
 
-from django.shortcuts import render_to_response
-from django.template.loader import render_to_string
-from django import http
+import decorator
+import simplejson
+import webob
+import webob.exc
+import wsgidispatcher
 
-from decorator import *
 
 CREF_MIMETYPE = 'text/xml'
 ANNOTATIONS_MIMETYPE = 'text/xml'
 OSD_MIMETYPE = 'application/opensearchdescription+xml'
 
 CACHE_EXPIRATION = 3600
+
+TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), 'templates')
 
 
 class ReportableError(Exception):
@@ -55,6 +60,15 @@ class ServerError(ReportableError):
 
 class RemoteError(ReportableError):
   """An error caused by remote services."""
+
+
+class TemplateResponse(webob.Response):
+  def __init__(self, template_name, template_data=None, *args, **kwargs):
+    super(TemplateResponse, self).__init__(*args, **kwargs)
+    if template_data is None:
+      template_data = {}
+    path = os.path.join(TEMPLATE_DIR, template_name)
+    self.body = template.render(path, template_data)
 
 
 def cacheable(keygen=None, expiration=CACHE_EXPIRATION):
@@ -95,7 +109,7 @@ def cacheable(keygen=None, expiration=CACHE_EXPIRATION):
         logging.error('Error caching response for %s.' % local_key)
     return result
 
-  return decorator(call)
+  return decorator.decorator(call)
 
 
 def request_keygen(request, *args, **kwargs):
@@ -152,7 +166,7 @@ def get_friendfeed_profile(nickname):
   return friendfeed_profile
 
 
-def _get_friendfeed_name(friendfeed_profile, friendfeed_name):
+def get_friendfeed_name(friendfeed_profile, friendfeed_name):
   """Looks into the profile to get the users real name."""
   try:    
     name = friendfeed_profile['name']
@@ -164,7 +178,7 @@ def _get_friendfeed_name(friendfeed_profile, friendfeed_name):
   return name
 
 
-def _get_friend_nicknames(friendfeed_profile):
+def get_friend_nicknames(friendfeed_profile):
   """Return a list of friend nicknames from the profile."""
   friend_nicknames = []
   for subscription in friendfeed_profile['subscriptions']:
@@ -180,108 +194,194 @@ def _get_friend_nicknames(friendfeed_profile):
   return friend_nicknames
 
 
+def NotFoundView(request):
+  """Print a 404 page"""
+  logging.debug('Beginning NotFound handler')
+  return TemplateResponse('404.tmpl', status='404 Not Found')
 
-@cacheable(keygen=request_keygen)
-def FaqView(request):
-  """Prints the FAQ page."""
-  logging.debug('Beginning FaqView handler')
-  return render_to_response('faq.tmpl')
+
+def ExceptionView(request, *args, **kwargs):
+  """Print a 500 page"""
+  logging.debug('Beginning ExceptionView handler')
+  return TemplateResponse('500.tmpl', status='500 Server Error')
 
 
 @cacheable(keygen=request_keygen)
 def HomeView(request):
   """Prints the wego wego homepage"""
   logging.debug('Beginning HomeView handler')
-  return render_to_response('home.tmpl')
+  return TemplateResponse('home.tmpl')
+
+
+@cacheable(keygen=request_keygen)
+def FaqView(request):
+  logging.debug('Beginning FaqView handler')
+  return TemplateResponse('faq.tmpl')
 
 
 def UserRedirectView(request):
   """Redirects a form POST to the user view."""
-  logging.debug('Beginning handler')
+  logging.debug('Beginning UserRedirectView handler')
   nickname = request.POST.get('nickname')
   if not nickname:
     raise UserError('nickname required')
-  return http.HttpResponseRedirect('/friendfeed/%s/' % nickname)
+  return webob.exc.HTTPSeeOther(location=('/friendfeed/%s/' % nickname))
 
 
 @cacheable(keygen=request_keygen)
 def UserView(request, nickname):
   """A request handler that generates a few demos."""
   logging.debug('Beginning UserView handler')
-
   if not request.path.islower():
-    return http.HttpResponseRedirect(request.path.lower())
-
+    return webob.exc.HTTPMovedPermanently(location=request.path.lower())
   friendfeed_profile = get_friendfeed_profile(nickname)
-  name = _get_friendfeed_name(friendfeed_profile, nickname)
-
+  name = get_friendfeed_name(friendfeed_profile, nickname)
   template_data = {'nickname': nickname, 'name':  name}
-
-  return render_to_response('user.tmpl', template_data)
-
-
-@cacheable(keygen=request_keygen)
-def CrefView(request, nickname):
-  """A request handler that generates CustomSearch cref files."""
-  logging.debug('Beginning CrefView handler')
-
-  if not request.path.islower():
-    return http.HttpResponseRedirect(request.path.lower())
-
-  friendfeed_profile = get_friendfeed_profile(nickname)
-  name = _get_friendfeed_name(friendfeed_profile, nickname)
-
-  # Google CSE annotation files can only contain 50 at a time
-  # so we shard the Include references.  Django templates 
-  # don't support math operations, so we pass it a list
-  # of start indexes that we precalculate here.
-  num_friends = len(_get_friend_nicknames(friendfeed_profile))
-  start_indexes = [i * 50 for i in xrange((num_friends / 50) + 1)]
-
-  template_data = {'nickname': nickname, 
-                   'name':  name,
-                   'start_indexes': start_indexes}
-
-  # Django 0.96's render_to_response does not take a mimetype parameter
-  template_string = render_to_string('cref.tmpl', template_data)
-  return http.HttpResponse(template_string, mimetype=CREF_MIMETYPE)
-
-
-@cacheable(keygen=request_keygen)
-def AnnotationView(request, nickname, start_index=0):
-  """A request handler that generates CustomSearch annotation file."""
-  logging.debug('Beginning AnnotationView handler')
-
-  if not request.path.islower():
-    return http.HttpResponseRedirect(request.path.lower())
-
-  start_index = int(start_index)
-  friendfeed_profile = get_friendfeed_profile(nickname)
-  all_friend_nicknames = _get_friend_nicknames(friendfeed_profile)
-  end_index = min(len(all_friend_nicknames), start_index + 50)
-  friend_nicknames = all_friend_nicknames[start_index:end_index]
-
-  template_data = {'friend_nicknames': friend_nicknames}
-
-  # Django 0.96's render_to_response does not take a mimetype parameter
-  template_string = render_to_string('annotations.tmpl', template_data)
-  return http.HttpResponse(template_string, mimetype=ANNOTATIONS_MIMETYPE)
+  return TemplateResponse('user.tmpl', template_data)
 
 
 @cacheable(keygen=request_keygen)
 def OsdView(request, nickname):
   """A request handler that generates an opensearch description document."""
   logging.debug('Beginning OsdView handler')
-
   if not request.path.islower():
-    return http.HttpResponseRedirect(request.path.lower())
-
+    return webob.exc.HTTPMovedPermanently(location=request.path.lower())
   friendfeed_profile = get_friendfeed_profile(nickname)
-  name = _get_friendfeed_name(friendfeed_profile, nickname)
-
+  name = get_friendfeed_name(friendfeed_profile, nickname)
   template_data = {'nickname': nickname, 'name':  name}
+  return TemplateResponse('osd.tmpl', template_data, content_type=OSD_MIMETYPE)
 
-  # Django 0.96's render_to_response does not take a mimetype parameter
-  template_string = render_to_string('osd.tmpl', template_data)
-  return http.HttpResponse(template_string, mimetype=OSD_MIMETYPE)
 
+@cacheable(keygen=request_keygen)
+def CrefView(request, nickname):
+  """A request handler that generates CustomSearch cref files."""
+  logging.debug('Beginning CrefView handler')
+  if not request.path.islower():
+    return webob.exc.HTTPMovedPermanently(location=request.path.lower())
+  friendfeed_profile = get_friendfeed_profile(nickname)
+  name = get_friendfeed_name(friendfeed_profile, nickname)
+  # Google CSE annotation files can only contain 50 at a time
+  # so we shard the Include references.  Django templates 
+  # don't support math operations, so we pass it a list
+  # of start indexes that we precalculate here.
+  num_friends = len(get_friend_nicknames(friendfeed_profile))
+  start_indexes = [i * 50 for i in xrange((num_friends / 50) + 1)]
+  template_data = {'nickname': nickname, 
+                   'name':  name,
+                   'start_indexes': start_indexes}
+  return TemplateResponse('cref.tmpl', template_data, content_type=CREF_MIMETYPE)
+
+
+@cacheable(keygen=request_keygen)
+def AnnotationView(request, nickname, start_index=None):
+  """A request handler that generates CustomSearch annotation file."""
+  logging.debug('Beginning AnnotationView handler')
+  if not request.path.islower():
+    return webob.exc.HTTPMovedPermanently(location=request.path.lower())
+  if start_index is None:
+    start_index = 0
+  else:
+    start_index = int(start_index)
+  friendfeed_profile = get_friendfeed_profile(nickname)
+  all_friend_nicknames = get_friend_nicknames(friendfeed_profile)
+  end_index = min(len(all_friend_nicknames), start_index + 50)
+  friend_nicknames = all_friend_nicknames[start_index:end_index]
+  template_data = {'friend_nicknames': friend_nicknames}
+  return TemplateResponse(
+    'annotations.tmpl', template_data, content_type=ANNOTATIONS_MIMETYPE)
+
+
+class Dispatcher(object):
+  """A URL dispatcher build on wsgidispatcher.Dispatcher.
+
+  This dispatcher bridges the power of the wsgidispatcher's pattern
+  matcher with the convenience of Django style method invocations, with
+  little of the overhead of Django.
+  """
+  def __init__(self):
+    self._urls = wsgidispatcher.Dispatcher()
+
+  def get_app(self):
+    """Returns a WSGIApplication instance."""
+    return self._urls;
+
+  @staticmethod
+  def _redirect_with_slash(environ, start_response):
+    """Redirects to the same page with a trailing redirect."""
+    new_url = environ['SCRIPT_NAME'] + '/'
+    start_response('301 Moved Permanently', 
+                   [('content-type', 'text/html'),
+                    ('Location', new_url)])
+    return [('Page moved to %s' % new_url)]
+
+  class _make_request(object):
+    """A private wrapper class around functions to help them support WSGI."""
+    def __init__(self, f, error_handler=None):
+      self._f = f
+      self._error_handler = error_handler
+
+    def __call__(self, environ, start_response):
+      request = webob.Request(environ)
+      try:
+        kwargs = environ['wsgiorg.routing_args'][1]
+      except KeyError:
+        kwargs = {}
+      try:
+        response = self._f(request, **kwargs)
+      except BaseException, e:
+        if self._error_handler:
+          return self._error_handler(environ, start_response)
+        else:
+          raise e
+      return response(environ, start_response)
+
+  def add_get_handler(self, path, f, error_handler=None):
+    """Add a new route between GET requests to path and the named function.
+
+    The function will be invoked with a webob.Request instance, and
+    expect a webob.Response instance to be returned.
+
+    Paths that end with '/' will automatically get a redirector to
+    append the missing slash if necessary.
+    """
+    if error_handler is None:
+      error_handler = self._error_handler
+    self._urls.add(path, GET=self._make_request(f, error_handler))
+    if path.endswith('/'):
+      self._urls.add(path[0:-1], GET=self._redirect_with_slash)
+
+  def add_post_handler(self, path, f, error_handler=None):
+    """Add a new route between POST requests to path and the named function.
+
+    The function will be invoked with a webob.Request instance, and
+    expect a webob.Response instance to be returned.
+    """
+    if error_handler is None:
+      error_handler = self._error_handler
+    self._urls.add(path, POST=self._make_request(f, error_handler))
+
+  def add_not_found_handler(self, f):
+    self._urls.handle404 = self._make_request(f)
+
+  def add_error_handler(self, f):
+    self._error_handler = self._make_request(f)
+
+
+def Main():
+  dispatcher = Dispatcher()
+  dispatcher.add_error_handler(ExceptionView)
+  dispatcher.add_get_handler('/', HomeView)
+  dispatcher.add_get_handler('/faq/', FaqView)
+  dispatcher.add_post_handler('/user/', UserRedirectView)
+  dispatcher.add_get_handler('/friendfeed/{nickname:word}/', UserView)
+  dispatcher.add_get_handler('/friendfeed/{nickname:word}/osd/', OsdView)
+  dispatcher.add_get_handler('/friendfeed/{nickname:word}/cref/', CrefView)
+  dispatcher.add_get_handler(
+    '/friendfeed/{nickname:word}/annotations[/{start_index:digits}]/', 
+    AnnotationView)
+  dispatcher.add_not_found_handler(NotFoundView)
+
+  run_wsgi_app(dispatcher.get_app())
+  
+if __name__ == '__main__':
+  Main()
