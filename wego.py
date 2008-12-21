@@ -37,7 +37,7 @@ OSD_MIMETYPE = 'application/opensearchdescription+xml'
 CACHE_EXPIRATION = 3600
 TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), 'templates')
 MAX_FRIENDS_PER_ANNOTATION = 5
-MAX_ANNOTATIONS = 50
+MAX_ANNOTATIONS = 49
 MAX_FRIENDS = MAX_FRIENDS_PER_ANNOTATION * MAX_ANNOTATIONS
 ANNOTATIONS_URL_TEMPLATE = 'http://ego-ego.appspot.com/friendfeed/%s/annotations/list/'
 
