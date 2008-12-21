@@ -13,6 +13,9 @@
 # limitations under the License.
 
 import logging
+
+logging.debug('Beginning main.py')
+
 import os
 
 from google.appengine.api import memcache
@@ -102,7 +105,7 @@ def cacheable(keygen=None, expiration=CACHE_EXPIRATION):
     if result:
       logging.debug('Found %s in cache.' % local_key)
     else:
-      logging.debug('Cache miss for %s.' % local_key)
+      logging.debug('Cache miss for %s' % local_key)
       result = f(*args, **kwargs)
       logging.debug('Caching %s' % local_key)
       if not memcache.add(global_key, result, expiration):
@@ -368,6 +371,7 @@ class Dispatcher(object):
 
 
 def Main():
+  logging.debug('Beginning Main()')
   dispatcher = Dispatcher()
   dispatcher.add_error_handler(ExceptionView)
   dispatcher.add_get_handler('/', HomeView)
