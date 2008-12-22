@@ -400,9 +400,9 @@ class Dispatcher(object):
 def init():
   logging.debug('init()')
   global dispatcher
+  dispatcher = Dispatcher()
   if not os.environ['SERVER_SOFTWARE'].startswith('Dev'):
     dispatcher.add_error_handler(ExceptionView)
-  dispatcher = Dispatcher()
   dispatcher.add_get_handler('/', HomeView)
   dispatcher.add_get_handler('/faq/', FaqView)
   dispatcher.add_post_handler('/user/', UserRedirectView)
