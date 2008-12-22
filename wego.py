@@ -420,7 +420,7 @@ def init():
 init()
 
 def main():
-  logging.debug('Beginning Main()')
+  logging.debug('Beginning main()')
   run_wsgi_app(dispatcher.get_app())
   
 if __name__ == '__main__':
