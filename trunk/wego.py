@@ -398,7 +398,7 @@ class Dispatcher(object):
     self._error_handler = self._make_request(f)
 
 def init():
-  logging.debug('init()')
+  logging.debug('Beginning init()')
   global dispatcher
   dispatcher = Dispatcher()
   if not os.environ['SERVER_SOFTWARE'].startswith('Dev'):
