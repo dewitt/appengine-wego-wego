@@ -397,12 +397,12 @@ class Dispatcher(object):
   def add_error_handler(self, f):
     self._error_handler = self._make_request(f)
 
-
-def Main():
-  logging.debug('Beginning Main()')
-  dispatcher = Dispatcher()
+def init():
+  logging.debug('init()')
   if not os.environ['SERVER_SOFTWARE'].startswith('Dev'):
     dispatcher.add_error_handler(ExceptionView)
+  global dispatcher
+  dispatcher = Dispatcher()
   dispatcher.add_get_handler('/', HomeView)
   dispatcher.add_get_handler('/faq/', FaqView)
   dispatcher.add_post_handler('/user/', UserRedirectView)
@@ -416,7 +416,12 @@ def Main():
   dispatcher.add_get_handler('/statsstatsstats/', StatsView)
   dispatcher.add_not_found_handler(NotFoundView)
 
+# Call static initializer once
+init()
+
+def main():
+  logging.debug('Beginning Main()')
   run_wsgi_app(dispatcher.get_app())
   
 if __name__ == '__main__':
-  Main()
+  main()
